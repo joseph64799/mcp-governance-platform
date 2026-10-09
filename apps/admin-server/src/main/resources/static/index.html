@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MCP 治理控制台</title><link rel="stylesheet" href="/console.css"></head>
+<body>
+<header><div><span class="eyebrow">MCP GOVERNANCE</span><h1>能力管理控制台</h1><p>接入服务、审核工具、组织能力，按需授权。</p></div><span id="version" class="badge">尚未连接</span></header>
+<main>
+<section class="access"><label>管理员凭据<input id="token" type="password" autocomplete="off" placeholder="输入管理员访问令牌"></label><button id="connect">连接并刷新</button><p>凭据仅保存在当前页面内存，刷新页面后需重新输入。</p></section>
+<p id="notice" role="status" aria-live="polite">连接后查看目录。新发现的工具需要发布和授权才能被调用。</p>
+<nav><a href="#services">服务</a><a href="#tools">工具</a><a href="#groups">能力组</a><a href="#grants">授权</a></nav>
+<section id="services"><div class="heading"><h2>服务接入</h2><p>发现服务会定期同步工具目录。</p></div>
+<form id="service-form" class="grid">
+<label>服务标识<input name="id" required placeholder="orders"></label>
+<label>组织标识<input name="tenant" required placeholder="acme"></label>
+<label class="wide">MCP 地址<input name="endpoint" type="url" required placeholder="https://service.example/mcp"></label>
+<label>上游凭据引用（可选）<input name="credentialRef" placeholder="MCP_UPSTREAM_ORDERS"></label>
+<label class="check"><input name="enabled" type="checkbox" checked>启用</label><button>保存服务</button>
+</form><div id="service-list"></div></section>
+<section id="tools"><div class="heading"><h2>工具目录</h2><p>变更后的工具重新进入待审核状态；发布不会自动授予权限。</p></div><div id="tool-list"></div><details><summary>查看选中工具的定义</summary><pre id="definition">点击工具名称查看。</pre></details></section>
+<section id="groups"><div class="heading"><h2>能力分组</h2><p>跨服务组合工具，并为每个工具设置对外名称。分组与授权独立。</p></div>
+<form id="group-form">
+<div class="grid"><label>分组标识<input name="id" required placeholder="order-operations"></label><label>组织标识<input name="tenant" required placeholder="acme"></label><label>统一名称<input name="title" required placeholder="订单运营"></label><label class="wide">内部能力说明<textarea name="description" rows="2"></textarea></label></div>
+<p class="hint">对外说明由统一名称和用户实际可用的工具生成；此处完整说明仅供管理员查看。</p><div id="group-tools"></div><button>保存分组</button></form><div id="group-list"></div></section>
+<section id="grants"><div class="heading"><h2>权限分配</h2><p>授权绑定组织、身份来源和工具修订。角色来自已验证的身份声明。</p></div>
+<form id="grant-form" class="grid">
+<label>授权标识<input name="id" required placeholder="alice-order-query"></label><label>组织标识<input name="tenant" required placeholder="acme"></label>
+<label>授权对象类型<select name="subjectType"><option value="USER">用户</option><option value="ROLE">角色</option></select></label>
+<label>用户或角色标识<input name="subject" required></label><label>身份来源<input name="issuer" required placeholder="https://identity.example"></label>
+<label>能力组范围<select name="groupId" id="grant-group"><option value="">所有引用此工具的组</option></select></label>
+<label class="wide">已发布工具<select name="toolId" id="grant-tool" required></select></label><button>保存当前修订授权</button>
+</form><div id="grant-list"></div></section>
+</main><footer>框架初始版本 · 管理员令牌接入 · 企业登录可通过身份适配器扩展</footer>
+<script src="/console.js" defer></script></body></html>
