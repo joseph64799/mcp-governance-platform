@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1470" viewBox="0 0 1500 1470" role="img" aria-labelledby="title desc">
+<title id="title">三类接入与能力视图：目标设计</title>
+<desc id="desc">员工、应用和消费者共用四服务治理架构。已知分组入口保留；统一跨组入口及应用身份、说明、业务上下文等扩展待实现。工具权限、数据范围与业务条件分别控制。</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#61758d" stroke-width="1.4"/></marker>
+<style>text{font-family:"Noto Sans SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#20354f}.flow{fill:none;stroke:#61758d;stroke-width:2;marker-end:url(#arrow)}.sync{stroke-dasharray:7 5}.title{font-size:40px;font-weight:700}.heading{font-size:28px;font-weight:700}.label{font-size:23px}.small{font-size:20px;fill:#62738a}</style></defs>
+<rect width="1500" height="1470" fill="#f5f8fc"/>
+<text x="60" y="67" class="title">三类接入，共用 MCP 治理内核</text>
+<text x="62" y="107" class="small">目标设计 · 固定与动态是授权策略；主体类型和凭证形式分别建模</text>
+<rect x="60" y="150" width="430" height="150" rx="12" fill="#eaf2ff" stroke="#9fbce5" stroke-width="2"/>
+<text x="84" y="192" class="heading">运营／员工</text>
+<text x="84" y="235" class="label">岗位、角色与业务授权</text>
+<text x="84" y="271" class="label">工具范围随授权调整</text>
+<rect x="535" y="150" width="430" height="150" rx="12" fill="#e9f6f1" stroke="#94c4b2" stroke-width="2"/>
+<text x="559" y="192" class="heading">应用／第三方</text>
+<text x="559" y="235" class="label">Key 等凭证绑定能力范围</text>
+<text x="559" y="271" class="label">默认稳定，仍可变更与撤销</text>
+<rect x="1010" y="150" width="430" height="150" rx="12" fill="#f1edfb" stroke="#b8a7dc" stroke-width="2"/>
+<text x="1034" y="192" class="heading">C 端用户</text>
+<text x="1034" y="235" class="label">同类用户共用基础工具集</text>
+<text x="1034" y="271" class="label">调用时检查本人数据与状态</text>
+<path d="M275 300V330H1225V300 M750 300V330 M455 330V380 M1045 330V380" fill="none" stroke="#91a2b8" stroke-width="2"/>
+<text x="750" y="363" class="small" text-anchor="middle">按接入范围选择入口，三类场景均可使用</text>
+<rect x="220" y="395" width="470" height="150" rx="12" fill="#fff" stroke="#8cadcc" stroke-width="2"/>
+<text x="244" y="437" class="heading">/mcp/{groupId}</text>
+<text x="244" y="480" class="label">已知组地址 · 当前已实现</text>
+<text x="244" y="516" class="label">适合明确选择组或固定接入</text>
+<rect x="810" y="395" width="470" height="150" rx="12" fill="#fff7e8" stroke="#c39141" stroke-width="2" stroke-dasharray="8 5"/>
+<text x="834" y="437" class="heading">/mcp</text>
+<text x="834" y="480" class="label">跨组主体视图 · 待实现</text>
+<text x="834" y="516" class="label">只配置网关地址与认证方式</text>
+<path d="M455 545V605H1045V545" fill="none" stroke="#61758d" stroke-width="2"/>
+<path d="M455 605H260V685" class="flow"/>
+<text x="750" y="640" class="small" text-anchor="middle">同一套认证、授权、工具绑定和调用协议</text>
+<rect x="60" y="690" width="400" height="240" rx="12" fill="#fff" stroke="#9eb9d4" stroke-width="2"/>
+<text x="84" y="732" class="heading">Gateway 网关</text>
+<text x="84" y="775" class="label">识别主体与入口范围</text>
+<text x="84" y="811" class="label">决定工具可见／调用权限</text>
+<text x="84" y="847" class="label">签发请求绑定许可</text>
+<text x="84" y="883" class="label">扩展：应用 Key / 跨组许可</text>
+<rect x="550" y="690" width="400" height="240" rx="12" fill="#fff" stroke="#9eb9d4" stroke-width="2"/>
+<text x="574" y="732" class="heading">MCP Runtime</text>
+<text x="574" y="775" class="label">工具列表、说明与名称映射</text>
+<text x="574" y="811" class="label">消费许可，解析具体组与工具</text>
+<text x="574" y="847" class="label">校验版本并转接业务调用</text>
+<text x="574" y="883" class="label">扩展：统一视图 / Doc 交付</text>
+<rect x="1040" y="690" width="400" height="240" rx="12" fill="#fff" stroke="#9eb9d4" stroke-width="2"/>
+<text x="1064" y="732" class="heading">业务 MCP</text>
+<text x="1064" y="775" class="label">执行已授权能力</text>
+<text x="1064" y="811" class="label">约束数据范围与业务状态</text>
+<text x="1064" y="847" class="label">平台级调用使用服务身份</text>
+<text x="1064" y="883" class="label">用户相关调用适配可信上下文</text>
+<path d="M460 795H550" class="flow"/>
+<text x="505" y="775" class="small" text-anchor="middle">许可</text>
+<path d="M950 795H1040" class="flow"/>
+<text x="995" y="775" class="small" text-anchor="middle">转接</text>
+<text x="60" y="984" class="heading">管理面与发现：采集、审核、授权和版本化配置</text>
+<rect x="100" y="1030" width="550" height="200" rx="12" fill="#edf3fa" stroke="#aebfd3" stroke-width="2"/>
+<text x="124" y="1072" class="heading">Admin 管理后台</text>
+<text x="124" y="1115" class="label">工具修订、能力组、授权与持久化</text>
+<text x="124" y="1151" class="label">扩展：应用主体 / 基础授权模板</text>
+<text x="124" y="1187" class="label">扩展：面向 Agent 的说明可见策略</text>
+<rect x="850" y="1030" width="550" height="200" rx="12" fill="#edf3fa" stroke="#aebfd3" stroke-width="2"/>
+<text x="874" y="1072" class="heading">Discovery 发现服务</text>
+<text x="874" y="1115" class="label">完整分页采集工具，成功后提交</text>
+<text x="874" y="1151" class="label">新增与变更仍需审核、发布、授权</text>
+<text x="874" y="1187" class="label">扩展：采集待审核的上游说明</text>
+<path d="M120 1030V1010H35V850H60" class="flow sync"/>
+<path d="M650 1100H750V940" class="flow sync"/>
+<text x="696" y="1080" class="small" text-anchor="middle">快照</text>
+<path d="M1240 1030V940" class="flow"/>
+<text x="1272" y="970" class="small">采集</text>
+<path d="M850 1160H650" class="flow"/>
+<text x="750" y="1140" class="small" text-anchor="middle">完整观察报告</text>
+<rect x="60" y="1280" width="1380" height="140" rx="12" fill="#fff" stroke="#d2dce8" stroke-width="2"/>
+<text x="84" y="1319" class="label">三层边界：工具权限决定能力；数据权限决定范围；业务条件决定本次操作。</text>
+<text x="84" y="1357" class="small">当前基线：JWT / demo、用户／角色授权、分组入口、服务端快照与调用复核。</text>
+<text x="84" y="1391" class="small">待补能力按场景启用；客户端目录与 Doc 刷新分别设计，固定目录也保留每次调用鉴权。</text>
+</svg>
