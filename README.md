@@ -2,7 +2,7 @@
 
 基于 Spring 的模块化 MCP 治理框架：**一个仓库、一个 Maven 父工程、四个独立启动器**。集中接入多个业务 MCP 服务，按能力分组，对不同用户返回不同工具列表，并对每次调用重新授权。
 
-[用户诉求](REQUIREMENTS.md) · [项目架构](ARCHITECTURE.md) · [十一张架构 / UML / 交互图](docs/DIAGRAMS.md) · [扩展开发](docs/EXTENSIONS.md) · [接口与运行配置](docs/OPERATIONS.md)
+[用户诉求](REQUIREMENTS.md) · [项目架构](ARCHITECTURE.md) · [十一张架构 / UML / 交互图](docs/DIAGRAMS.md) · [扩展开发](docs/EXTENSIONS.md) · [接口与运行配置](docs/OPERATIONS.md) · [审查与待办](TODO.md)
 
 ![总体架构](docs/diagrams/architecture.svg)
 
