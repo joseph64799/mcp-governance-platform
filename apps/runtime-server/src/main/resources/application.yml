@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: runtime-server
+  codec:
+    max-in-memory-size: 256KB
+server:
+  max-http-request-header-size: 128KB
+  address: ${BIND_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8083}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+mcp:
+  control:
+    url: ${CONTROL_URL:http://127.0.0.1:8081}
+    read-token: ${CONTROL_READ_TOKEN:}
+    discovery-token: ${DISCOVERY_TOKEN:}
+  runtime:
+    url: ${RUNTIME_URL:http://127.0.0.1:8083}
+    signing-secret: ${RUNTIME_SIGNING_SECRET:}
+  admin:
+    token: ${ADMIN_TOKEN:}
+    catalog-file: ${CATALOG_FILE:./data/catalog.json}
+    allowed-upstream-hosts: ${ALLOWED_UPSTREAM_HOSTS:127.0.0.1,localhost}
+  discovery:
+    interval-ms: ${DISCOVERY_INTERVAL_MS:10000}
+  snapshot:
+    refresh-ms: ${SNAPSHOT_REFRESH_MS:2000}
+    max-age-ms: ${SNAPSHOT_MAX_AGE_MS:15000}
+  identity:
+    mode: ${IDENTITY_MODE:jwt}
+    issuer: ${JWT_ISSUER:}
+    jwks-uri: ${JWT_JWKS_URI:}
+    audience: ${JWT_AUDIENCE:}
+    tenant: ${JWT_TENANT:}
+    roles-claim: ${JWT_ROLES_CLAIM:roles}
+    demo-alice-token: ${DEMO_ALICE_TOKEN:}
+    demo-bob-token: ${DEMO_BOB_TOKEN:}
+  allowed-origins: ${MCP_ALLOWED_ORIGINS:}
