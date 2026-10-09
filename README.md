@@ -1,8 +1,8 @@
 # MCP Governance Platform
 
-基于 Spring 的模块化 MCP 治理框架：**一个仓库、一个 Maven 父工程、四个独立启动器**。集中接入多个业务 MCP 服务，按能力分组，对不同用户返回不同工具列表，并对每次调用重新授权。
+基于 Spring 的模块化 MCP 治理框架：**一个仓库、一个 Maven 父工程、四个独立启动器**。集中接入多个业务 MCP 服务，按能力分组，依据调用主体提供工具列表，并对每次调用重新授权。目标同时覆盖运营／员工、应用／第三方和 C 端，工具范围可以固定，也可以随授权调整。
 
-[用户诉求](REQUIREMENTS.md) · [项目架构](ARCHITECTURE.md) · [十一张架构 / UML / 交互图](docs/DIAGRAMS.md) · [扩展开发](docs/EXTENSIONS.md) · [接口与运行配置](docs/OPERATIONS.md) · [审查与待办](TODO.md)
+[用户诉求](REQUIREMENTS.md) · [项目架构](ARCHITECTURE.md) · [接入场景与能力视图](docs/ACCESS-MODEL.md) · [架构 / UML / 交互图](docs/DIAGRAMS.md) · [扩展开发](docs/EXTENSIONS.md) · [接口与运行配置](docs/OPERATIONS.md) · [审查与待办](TODO.md)
 
 ![总体架构](docs/diagrams/architecture.svg)
 
@@ -13,6 +13,18 @@
 - **docs/DIAGRAMS.md**：总体架构、领域模型、工具状态，以及八个场景的时序图。SVG 可直接查看、下载和编辑。
 - **apps/**：只包含应用装配、入口、安全过滤、HTTP 接口及管理页面。
 - **modules/**：领域逻辑和扩展接口，可被启动器组合复用。
+
+## 接入场景与设计状态
+
+| 场景 | 目标策略 |
+|---|---|
+| 运营／公司员工 | 按岗位、角色及业务授权提供工具 |
+| 应用／第三方 Key | 应用绑定能力组或套餐，默认稳定，仍可变更及撤销 |
+| C 端用户 | 同类用户共用基础工具集；每次调用检查数据归属及业务条件 |
+
+固定工具目录与用户数据隔离可以同时成立。三类场景复用同一套认证、授权、目录与转接内核，不按权限变化频率拆服务。
+
+**当前可运行入口仍为 `/mcp/{groupId}`，认证为 JWT／demo。** 已知能力组的固定接入可继续使用该入口。只配置一个地址并获取跨组能力的 `/mcp`、正式 Key／应用主体、C 端专用接入样例与模板配置、完整 Doc 交付、客户端自动刷新及业务委托上下文均为待实现项，详见[设计差异表](docs/ACCESS-MODEL.md#9-实现差异与验收)。
 
 ## 工程划分
 
@@ -46,10 +58,10 @@
 2. 新增、修改或重新出现的工具进入待审核状态；审核发布后仍需授权对应修订。
 3. 管理员跨服务组织能力组，配置工具对外别名，授予用户或角色组内 / 全组复用权限。
 4. Agent 访问网关的 `/mcp/{groupId}`。认证组件生成统一调用者，网关使用当前快照判断可用工具。
-5. Runtime 只接受网关签发的短期、请求绑定执行许可，生成该用户的工具列表和说明，或调用原始 MCP 工具。
+5. Runtime 只接受网关签发的短期、请求绑定执行许可，生成该用户的工具列表和“组标题＋可见工具名”摘要，或调用原始 MCP 工具；完整组 description 当前未返回。
 6. 管理员撤权或停用工具后，新快照同时影响列表和真实调用。旧列表不构成授权依据。
 
-业务 MCP 凭据独立配置，用户 Bearer 不透传。标记为资源敏感的工具会执行资源授权接口；默认实现拒绝。
+业务 MCP 凭据独立配置，用户 Bearer 不透传。当前连接器调用参数不含 Caller，面向用户业务的可信上下文尚待适配。标记为资源敏感的工具会执行资源授权接口；默认实现拒绝，该接口不自动注入查询范围。
 
 ## 本地构建与演示
 
@@ -98,6 +110,9 @@ python3 scripts/smoke.py --demo
 | 能力 | 当前实现 |
 |---|---|
 | 管理后台 | 可操作的服务、目录、发布、分组、授权页面；初始管理员令牌模式 |
+| 三类接入策略 | 本次明确目标模型；正式 Key、应用主体及 C 端专用接入样例与模板配置尚未实现 |
+| 入口范围 | 已知组 `/mcp/{groupId}` 已实现；统一跨组 `/mcp` 待实现 |
+| 能力说明 | 初始化仅返回组标题与可见工具名；完整 Doc 交付与说明可见策略待实现 |
 | 工具发现 | Streamable HTTP；定时与手动同步；完整分页；失败不误删 |
 | 对外 MCP | 无会话 JSON 响应模式：initialize、initialized 通知、ping、tools/list、tools/call |
 | MCP 工具返回 | 保留 content、structuredContent 和 isError 等上游 SDK 结果 |
@@ -118,3 +133,4 @@ python3 scripts/smoke.py --demo
 GitHub Actions 在每次推送和 Pull Request 执行 Maven 构建、核心单元测试和四进程集成验证，并保留测试报告及脱敏应用日志。验证状态以仓库最新工作流为准。
 
 参考项目仅用于理解治理能力和实现边界：本项目没有直接复制一个完整网关产品，也没有引入额外注册中心。当前协议底座使用[官方 MCP Java SDK](https://github.com/modelcontextprotocol/java-sdk)，入口使用 [Spring Cloud Gateway](https://spring.io/projects/spring-cloud-gateway)。
+
