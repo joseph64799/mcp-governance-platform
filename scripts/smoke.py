@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LOGS = ROOT / "run" / "test-logs"
@@ -258,7 +259,26 @@ def seed(env):
     return by_name
 
 
+
+def sdk_probe(env):
+    """Use the SDK dependencies from the built runtime JAR, without another package manager."""
+    with tempfile.TemporaryDirectory(prefix="mcp-sdk-probe-") as temporary:
+        folder = Path(temporary)
+        jar = ROOT / "apps" / "runtime-server" / "target" / "runtime-server-0.1.0-SNAPSHOT.jar"
+        with zipfile.ZipFile(jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    # Only copy basenames from this project-produced artifact; no arbitrary extraction paths.
+                    (folder / Path(name).name).write_bytes(archive.read(name))
+        classpath = str(folder / "*")
+        subprocess.run(["javac", "-cp", classpath, "-d", str(folder), str(ROOT / "scripts" / "SdkProbe.java")], check=True)
+        subprocess.run(["java", "-cp", str(folder) + os.pathsep + classpath, "SdkProbe"],
+            env=dict(os.environ, PROBE_ENDPOINT=env.urls["gateway"] + "/mcp/orders", PROBE_TOKEN=env.tokens["alice"]),
+            check=True, timeout=60)
+
+
 def verify(env, by_name):
+    sdk_probe(env)
     alice_init = env.rpc("alice", "initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
         "clientInfo": {"name": "integration", "version": "1"}})
     assert alice_init[0] == 200 and "refund" not in json.dumps(alice_init[1]), alice_init

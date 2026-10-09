@@ -8,6 +8,7 @@ import io.github.mcpgov.discovery.DiscoveryCoordinator;
 import io.github.mcpgov.security.ServiceTokens;
 import org.springframework.boot.*;
 import org.springframework.boot.autoconfigure.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -21,9 +22,10 @@ public class DiscoveryApplication {
             ServiceTokens.configured(env.getProperty("mcp.control.read-token")),
             ServiceTokens.configured(env.getProperty("mcp.control.discovery-token")));
     }
-    @Bean McpConnector connector() { return new SdkMcpConnector(new EnvironmentCredentialProvider()); }
+    @Bean @ConditionalOnMissingBean CredentialProvider credentials() { return new EnvironmentCredentialProvider(); }
+    @Bean @ConditionalOnMissingBean McpConnector connector(CredentialProvider credentials) { return new SdkMcpConnector(credentials); }
     @Bean DiscoveryCoordinator coordinator(ControlPlaneClient control, McpConnector connector) {
         return new DiscoveryCoordinator(control, connector);
     }
-    @Bean AuditSink audit() { return new LoggingAuditSink(); }
+    @Bean @ConditionalOnMissingBean AuditSink audit() { return new LoggingAuditSink(); }
 }
