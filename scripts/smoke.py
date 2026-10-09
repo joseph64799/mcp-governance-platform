@@ -13,6 +13,7 @@ from pathlib import Path
 import secrets
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -106,7 +107,7 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def http(base, path, method="GET", token=None, data=None, headers=None):
+def request_http(base, path, method="GET", token=None, data=None, headers=None):
     body = None if data is None else json.dumps(data).encode()
     outgoing = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if token:
@@ -162,7 +163,7 @@ class Environment:
             if self.processes[name].poll() is not None:
                 raise RuntimeError(name + " terminated during startup; see sanitized application logs")
             try:
-                if http(self.urls[name], "/actuator/health")[0] == 200:
+                if request_http(self.urls[name], "/actuator/health")[0] == 200:
                     return
             except (OSError, urllib.error.URLError):
                 pass
@@ -192,13 +193,13 @@ class Environment:
             path.write_text(contents, encoding="utf-8")
 
     def admin(self, path, data=None, method=None):
-        status, result = http(self.urls["admin"], path, method or ("POST" if data is not None else "GET"),
+        status, result = request_http(self.urls["admin"], path, method or ("POST" if data is not None else "GET"),
                               self.tokens["admin"], data)
         assert status == 200, (path, status, result)
         return result
 
     def sync(self):
-        status, result = http(self.urls["discovery"], "/internal/sync", "POST",
+        status, result = request_http(self.urls["discovery"], "/internal/sync", "POST",
                               self.tokens["discovery"], {"serviceId": "orders"})
         assert status == 200, (status, result)
         return result
@@ -208,7 +209,7 @@ class Environment:
 
     def rpc(self, user, method, params=None, group="orders", headers=None):
         request = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
-        return http(self.urls["gateway"], "/mcp/" + group, "POST", self.tokens.get(user), request, headers)
+        return request_http(self.urls["gateway"], "/mcp/" + group, "POST", self.tokens.get(user), request, headers)
 
     def tools(self, user, names):
         """Poll only read-only listing; never automatically retry a business invocation."""
@@ -264,11 +265,11 @@ def verify(env, by_name):
     assert env.rpc(None, "tools/list")[0] == 401
     assert env.rpc("alice", "tools/list", headers={"Origin": "https://unapproved.example"})[0] == 403
     assert env.rpc("alice", "tools/list", headers={"X-Mcp-Execution-Permit": "attacker-supplied"})[0] == 200
-    direct = http(env.urls["runtime"], "/mcp/orders", "POST", None,
+    direct = request_http(env.urls["runtime"], "/mcp/orders", "POST", None,
                   {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     assert direct[0] == 401, direct
-    assert http(env.urls["admin"], "/api/snapshot", token=env.tokens["read"])[0] == 401
-    assert http(env.urls["admin"], "/internal/discovery", "POST", env.tokens["admin"], {})[0] == 401
+    assert request_http(env.urls["admin"], "/api/snapshot", token=env.tokens["read"])[0] == 401
+    assert request_http(env.urls["admin"], "/internal/discovery", "POST", env.tokens["admin"], {})[0] == 401
 
     before = len(env.fixture.calls)
     for name in ["refund_order", "refund", "guessed_tool"]:
@@ -369,6 +370,10 @@ def main():
                 verify(env, by_name)
         finally:
             env.close()
+            if sys.exc_info()[0] is not None:
+                for log in LOGS.glob("*.log"):
+                    print("--- sanitized " + log.name + " ---", flush=True)
+                    print("\n".join(log.read_text(errors="replace").splitlines()[-65:]), flush=True)
 
 
 if __name__ == "__main__":
