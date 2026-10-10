@@ -30,12 +30,6 @@ mvn -B -ntp -pl apps/gateway-server -am package
 | DISCOVERY_INTERVAL_MS | Discovery | 同步周期，默认 10000 |
 | SNAPSHOT_REFRESH_MS | Gateway / Runtime | 快照刷新周期，默认 2000 |
 | SNAPSHOT_MAX_AGE_MS | Gateway / Runtime | 快照租约，默认 15000，不得小于刷新周期 |
-| IDENTITY_MODE | Gateway | 默认 jwt；demo 仅供本地演示 |
-| JWT_ISSUER | Gateway | 可信 token 签发来源 |
-| JWT_JWKS_URI | Gateway | 管理员配置的可信公钥集地址 |
-| JWT_AUDIENCE | Gateway | 本平台预期受众 |
-| JWT_TENANT | Gateway | 默认适配器映射到的组织 |
-| JWT_ROLES_CLAIM | Gateway | 角色数组 claim 名，默认 roles |
 | MCP_ALLOWED_ORIGINS | Gateway | 带 Origin 的客户端请求必须匹配此允许列表 |
 | MCP_UPSTREAM_* | Discovery / Runtime | 上游专用 Authorization 值；由服务的 credentialRef 指定名称 |
 
@@ -43,7 +37,7 @@ ADMIN_TOKEN、CONTROL_READ_TOKEN、DISCOVERY_TOKEN 必须互不相同。为不�
 
 默认上游限制按主机名，禁止 URL 中携带用户密码、查询和片段，连接器不跟随重定向。生产中还应限制网络出口及可信 DNS，不能把字符串主机允许列表当作完整网络隔离。
 
-设置凭据与 JWT 配置后，在四个终端分别启动：
+设置内部凭据后（外部认证目前为骨架，完整业务调用需补完适配），在四个终端分别启动：
 
 ~~~bash
 java -jar apps/admin-server/target/admin-server-0.1.0-SNAPSHOT.jar
@@ -91,6 +85,7 @@ java -jar apps/gateway-server/target/gateway-server-0.1.0-SNAPSHOT.jar
 ~~~json
 {
   "id": "order-operations",
+  "clientType": "EMPLOYEE",
   "tenant": "acme",
   "title": "订单运营",
   "description": "供管理员维护的完整能力说明",
@@ -108,6 +103,7 @@ java -jar apps/gateway-server/target/gateway-server-0.1.0-SNAPSHOT.jar
 ~~~json
 {
   "id": "alice-query",
+  "clientType": "EMPLOYEE",
   "tenant": "acme",
   "subjectType": "USER",
   "subject": "alice",
@@ -124,9 +120,9 @@ subjectType 可为 USER 或 ROLE。groupId 省略或为 null 表示授权可在�
 
 ## Agent 的 MCP 接入
 
-当前接入地址是网关 `/mcp/{groupId}`，客户端预先知道组 ID。使用企业身份系统签发给平台的访问令牌；demo 令牌只能在显式 demo profile 与回环监听下使用。
+接入地址是 `/mcp/{groupId}`，分组的 clientType 选择认证。CONSUMER 接收 token 和 channel 请求头；EMPLOYEE 接收 Authorization: Bearer；APPLICATION 接收 X-API-Key。凭证不放查询串。格式正确的请求目前到达认证 TODO 后返回 501；缺失／格式错误返回 401。详见 [身份契约](IDENTITY.md)。
 
-固定能力接入继续采用已知组地址是合法模式。目标统一 `/mcp`、正式应用 Key、应用主体及 C 端专用接入样例与模板配置尚未实现；不要把应用 Key 填入现有 JWT 配置并假定可用。`MCP_UPSTREAM_*`、`ADMIN_TOKEN` 和内部令牌都不能充当已实现的外部应用 Key。设计及迁移边界见 [接入场景与能力视图](ACCESS-MODEL.md)。
+固定能力接入继续采用已知组地址是合法模式。目标统一 `/mcp`、真实应用 Key 校验及授权模板尚未实现；三端类型和身份传递已实现。`MCP_UPSTREAM_*`、`ADMIN_TOKEN` 和内部令牌都不能充当已实现的外部应用 Key。设计及迁移边界见 [接入场景与能力视图](ACCESS-MODEL.md)。
 
 对外支持无会话、JSON 响应的 Streamable HTTP 工具子集：
 
@@ -159,14 +155,15 @@ JSON-RPC 成功示例：
 | 409 | 网关许可与 Runtime 快照版本不同；未调用上游 |
 | 413 | 请求体或内部许可过大 |
 | 415 | 非 JSON 内容类型 |
+| 501 | 三端认证方法尚未实现，不接受未校验的身份 |
 | 502 | 上游发现或调用失败 |
-| 503 | 目录尚未加载、租约失效或控制面不可用 |
+| 503 | 目录尚未加载、租约失效、控制面不可用或旧分组未配置 clientType |
 
 服务端快照变化不会主动刷新客户端列表。当前须显式重新获取工具列表，初始化说明需要按客户端能力重新连接获取；现有集成脚本的主动轮询不证明客户端会自动刷新。对有副作用的业务调用不要自动重试；超时并不能证明上游没有执行。企业业务需要端到端幂等时，应显式设计业务幂等键和去重，不应在通用转接器里盲目重试。
 
 ## 验证和已知限制
 
-- Maven 单元测试覆盖目录状态、失败不删除、旧修订授权、跨组织和跨组隔离、资源权限、签名篡改 / 过期 / 重放、快照租约，以及真实 JWT 签名和声明验证。
+- Maven 单元测试覆盖目录状态、失败不删除、旧修订授权、跨组织和跨组隔离、资源权限、签名篡改 / 过期 / 重放、快照租约，以及三端认证骨架、类型隔离和旧目录待配置状态。
 - scripts/smoke.py 启动四个真实应用，通过官方 Java SDK 连接业务 MCP 测试服务，并完成 HTTP 端到端链路。
 - 初始目录存储不提供多进程写锁或事务数据库。不要运行两个 Admin 写同一文件。
 - 发现进程初始实现串行同步服务，适用于框架基线；大规模同步需增加有界并发、调度隔离和限流。

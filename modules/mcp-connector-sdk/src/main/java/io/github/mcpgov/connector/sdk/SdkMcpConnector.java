@@ -17,11 +17,16 @@ public final class SdkMcpConnector implements McpConnector {
     private final CredentialProvider credentials;
     public SdkMcpConnector(CredentialProvider credentials) { this.credentials = credentials; }
 
-    private McpSyncClient connect(ServiceRegistration service) {
+    private McpSyncClient connect(ServiceRegistration service, Map<String,String> identityHeaders) {
         if (!service.enabled() || !"streamable-http".equals(service.transport())) throw new IllegalArgumentException("Unsupported service");
         URI uri = URI.create(service.endpoint());
         HttpRequest.Builder request = HttpRequest.newBuilder().timeout(Duration.ofSeconds(15));
-        credentials.headers(service.credentialRef()).forEach(request::header);
+        credentials.headers(service.credentialRef()).forEach((name, value) -> {
+            if (BusinessIdentityHeaders.isIdentityHeader(name))
+                throw new IllegalArgumentException("Service credentials cannot supply a caller identity");
+            request.header(name, value);
+        });
+        identityHeaders.forEach(request::header);
         var transport = HttpClientStreamableHttpTransport.builder(uri.getScheme() + "://" + uri.getRawAuthority())
             .endpoint(uri.getRawPath().isBlank() ? "/mcp" : uri.getRawPath())
             .clientBuilder(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER))
@@ -29,7 +34,7 @@ public final class SdkMcpConnector implements McpConnector {
         return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(15)).build();
     }
     @Override public List<ObservedTool> discover(ServiceRegistration service) {
-        McpSyncClient client = connect(service);
+        McpSyncClient client = connect(service, Map.of());
         try {
             client.initialize();
             List<ObservedTool> result = new ArrayList<>();
@@ -50,10 +55,10 @@ public final class SdkMcpConnector implements McpConnector {
         } catch (Exception e) { throw new PlatformException(502, "upstream_discovery_failed"); }
         finally { close(client); }
     }
-    @Override public Map<String,Object> invoke(ServiceRegistration service, ToolEntry tool, Map<String,Object> arguments) {
+    @Override public Map<String,Object> invoke(ServiceRegistration service, ToolEntry tool, Map<String,Object> arguments, Caller caller) {
         if (!McpJsonDefaults.getSchemaValidator().validate(tool.inputSchema(), arguments).valid())
             throw new PlatformException(400, "invalid_tool_arguments");
-        McpSyncClient client = connect(service);
+        McpSyncClient client = connect(service, BusinessIdentityHeaders.from(caller));
         try {
             client.initialize();
             // Exactly one invocation: a timeout may mean the business operation already executed.

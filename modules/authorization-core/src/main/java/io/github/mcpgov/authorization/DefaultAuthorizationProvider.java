@@ -26,13 +26,13 @@ public final class DefaultAuthorizationProvider implements AuthorizationProvider
         return tool;
     }
     private boolean permitted(Caller caller, CapabilityGroup group, ToolEntry tool, Snapshot snapshot) {
-        if (tool == null || group == null || tool.state() != ToolState.PUBLISHED ||
+        if (tool == null || group == null || group.clientType() == null || group.clientType() != caller.clientType() || tool.state() != ToolState.PUBLISHED ||
             !caller.tenant().equals(group.tenant()) || !caller.tenant().equals(tool.tenant()) ||
             !group.tools().containsValue(tool.id())) return false;
         ServiceRegistration service = snapshot.services().get(tool.serviceId());
         if (service == null || !service.enabled()) return false;
         return snapshot.grants().values().stream().anyMatch(grant ->
-            grant.tenant().equals(caller.tenant()) &&
+            grant.clientType() == caller.clientType() && grant.tenant().equals(caller.tenant()) &&
             grant.issuer().equals(caller.issuer()) &&
             grant.toolId().equals(tool.id()) &&
             grant.toolRevision() == tool.revision() &&

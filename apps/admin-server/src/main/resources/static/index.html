@@ -18,13 +18,14 @@
 <section id="tools"><div class="heading"><h2>工具目录</h2><p>变更后的工具重新进入待审核状态；发布不会自动授予权限。</p></div><div id="tool-list"></div><details><summary>查看选中工具的定义</summary><pre id="definition">点击工具名称查看。</pre></details></section>
 <section id="groups"><div class="heading"><h2>能力分组</h2><p>跨服务组合工具，并为每个工具设置对外名称。分组与授权独立。</p></div>
 <form id="group-form">
-<div class="grid"><label>分组标识<input name="id" required placeholder="order-operations"></label><label>组织标识<input name="tenant" required placeholder="acme"></label><label>统一名称<input name="title" required placeholder="订单运营"></label><label class="wide">内部能力说明<textarea name="description" rows="2"></textarea></label></div>
+<div class="grid"><label>接入端<select name="clientType" required><option value="">请选择</option><option value="CONSUMER">C 端用户</option><option value="EMPLOYEE">公司员工</option><option value="APPLICATION">第三方应用</option></select></label><label>分组标识<input name="id" required placeholder="order-operations"></label><label>组织标识<input name="tenant" required placeholder="acme"></label><label>统一名称<input name="title" required placeholder="订单运营"></label><label class="wide">内部能力说明<textarea name="description" rows="2"></textarea></label></div>
 <p class="hint">对外说明由统一名称和用户实际可用的工具生成；此处完整说明仅供管理员查看。</p><div id="group-tools"></div><button>保存分组</button></form><div id="group-list"></div></section>
-<section id="grants"><div class="heading"><h2>权限分配</h2><p>授权绑定组织、身份来源和工具修订。角色来自已验证的身份声明。</p></div>
+<section id="grants"><div class="heading"><h2>权限分配</h2><p>授权绑定接入端、组织、身份来源和工具修订。角色来自已验证的身份声明。</p></div>
 <form id="grant-form" class="grid">
 <label>授权标识<input name="id" required placeholder="alice-order-query"></label><label>组织标识<input name="tenant" required placeholder="acme"></label>
-<label>授权对象类型<select name="subjectType"><option value="USER">用户</option><option value="ROLE">角色</option></select></label>
-<label>用户或角色标识<input name="subject" required></label><label>身份来源<input name="issuer" required placeholder="https://identity.example"></label>
+<label>接入端<select name="clientType" required><option value="">请选择</option><option value="CONSUMER">C 端用户</option><option value="EMPLOYEE">公司员工</option><option value="APPLICATION">第三方应用</option></select></label>
+<label>授权对象类型<select name="subjectType"><option value="USER">主体（用户／员工／应用）</option><option value="ROLE">角色</option></select></label>
+<label>业务主体或角色标识<input name="subject" required></label><label>身份来源<input name="issuer" required placeholder="https://identity.example"></label>
 <label>能力组范围<select name="groupId" id="grant-group"><option value="">所有引用此工具的组</option></select></label>
 <label class="wide">已发布工具<select name="toolId" id="grant-tool" required></select></label><button>保存当前修订授权</button>
 </form><div id="grant-list"></div></section>

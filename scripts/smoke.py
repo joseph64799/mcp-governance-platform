@@ -2,7 +2,7 @@
 """Build first with mvn verify. Runs real JVM apps against a deterministic MCP HTTP fixture.
 
 No third-party Python packages. Credentials are generated per run, never printed, and
-redacted from collected process logs. --demo leaves a populated local workspace running.
+redacted from collected process logs. Authentication substitutes exist only in the test launcher.
 """
 import argparse
 import contextlib
@@ -36,6 +36,8 @@ class Fixture:
         self.partial_failure = False
         self.call_error = False
         self.calls = []
+        self.call_headers = []
+        self.discovery_headers = []
         self.credential = "Bearer " + secrets.token_urlsafe(36)
         fixture = self
 
@@ -74,6 +76,7 @@ class Fixture:
                               "capabilities": {"tools": {"listChanged": False}},
                               "serverInfo": {"name": "test-orders", "version": "1.0"}}
                 elif method == "tools/list":
+                    fixture.discovery_headers.append(dict(self.headers))
                     offset = int(params.get("cursor", "0"))
                     if fixture.partial_failure and offset:
                         self.respond(503, {"error": "temporary_failure"})
@@ -83,6 +86,7 @@ class Fixture:
                         result["nextCursor"] = str(offset + 1)
                 elif method == "tools/call":
                     fixture.calls.append(params)
+                    fixture.call_headers.append({k.lower(): v for k, v in self.headers.items()})
                     result = {"content": [{"type": "text", "text": json.dumps(params)}],
                               "isError": fixture.call_error}
                 elif method == "ping":
@@ -132,7 +136,7 @@ class Environment:
     def __init__(self, directory):
         self.directory = Path(directory)
         self.fixture = Fixture()
-        self.tokens = {name: secrets.token_urlsafe(36) for name in ["admin", "read", "discovery", "signing", "alice", "bob"]}
+        self.tokens = {name: secrets.token_urlsafe(36) for name in ["admin", "read", "discovery", "signing", "alice", "bob", "employee", "app"]}
         ports = set()
         while len(ports) < 4:
             ports.add(free_port())
@@ -143,21 +147,34 @@ class Environment:
         self.env = dict(os.environ,
             ADMIN_TOKEN=self.tokens["admin"], CONTROL_READ_TOKEN=self.tokens["read"],
             DISCOVERY_TOKEN=self.tokens["discovery"], RUNTIME_SIGNING_SECRET=self.tokens["signing"],
-            DEMO_ALICE_TOKEN=self.tokens["alice"], DEMO_BOB_TOKEN=self.tokens["bob"],
+            TEST_ALICE_TOKEN=self.tokens["alice"], TEST_BOB_TOKEN=self.tokens["bob"],
+            TEST_EMPLOYEE_TOKEN=self.tokens["employee"], TEST_APP_TOKEN=self.tokens["app"],
             CONTROL_URL=self.urls["admin"], RUNTIME_URL=self.urls["runtime"],
-            IDENTITY_MODE="demo", SPRING_PROFILES_ACTIVE="demo", BIND_ADDRESS="127.0.0.1",
+            BIND_ADDRESS="127.0.0.1",
             CATALOG_FILE=str(self.directory / "catalog.json"), ALLOWED_UPSTREAM_HOSTS="127.0.0.1",
             SNAPSHOT_REFRESH_MS="200", SNAPSHOT_MAX_AGE_MS="3000", DISCOVERY_INTERVAL_MS="600000",
             MCP_UPSTREAM_ORDERS=self.fixture.credential)
         LOGS.mkdir(parents=True, exist_ok=True)
 
-    def start(self, name):
+    def start(self, name, production=False):
         jar = ROOT / "apps" / (name + "-server") / "target" / (name + "-server-0.1.0-SNAPSHOT.jar")
         if not jar.exists():
-            raise RuntimeError("Build the Maven project before running integration or demo.")
+            raise RuntimeError("Build the Maven project before running integration.")
         log = open(LOGS / (name + ".log"), "a", encoding="utf-8")
         self.handles.append(log)
-        self.processes[name] = subprocess.Popen(["java", "-Xms64m", "-Xmx256m", "-jar", str(jar)],
+        command = ["java", "-Xms64m", "-Xmx256m", "-jar", str(jar)]
+        if name == "gateway" and not production:
+            target = jar.parent
+            libs = target / "smoke-classpath"
+            libs.mkdir(exist_ok=True)
+            with zipfile.ZipFile(jar) as archive:
+                for entry in archive.namelist():
+                    if entry.startswith("BOOT-INF/lib/") and entry.endswith(".jar"):
+                        (libs / Path(entry).name).write_bytes(archive.read(entry))
+                assert not any("GatewayFixture" in entry for entry in archive.namelist())
+            classpath = os.pathsep.join(str(p) for p in [target / "test-classes", target / "classes", libs / "*"])
+            command = ["java", "-Xms64m", "-Xmx256m", "-cp", classpath, "io.github.mcpgov.testing.GatewayFixture"]
+        self.processes[name] = subprocess.Popen(command,
             env=dict(self.env, SERVER_PORT=str(self.ports[name])), stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
         deadline = time.monotonic() + 75
         while time.monotonic() < deadline:
@@ -212,13 +229,13 @@ class Environment:
         request = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
         return request_http(self.urls["gateway"], "/mcp/" + group, "POST", self.tokens.get(user), request, headers)
 
-    def tools(self, user, names):
+    def tools(self, user, names, group="orders"):
         """Poll only read-only listing; never automatically retry a business invocation."""
         deadline = time.monotonic() + 12
         last = None
         stable = 0
         while time.monotonic() < deadline:
-            status, result = self.rpc(user, "tools/list")
+            status, result = self.rpc(user, "tools/list", group=group)
             last = (status, result)
             observed = {t["name"] for t in result.get("result", {}).get("tools", [])} if status == 200 else None
             stable = stable + 1 if observed == set(names) else 0
@@ -227,17 +244,17 @@ class Environment:
             time.sleep(.25)
         raise AssertionError(("visible tool set did not converge", names, last))
 
-    def grant(self, grant_id, subject, tool, group="orders", role=False):
-        return self.admin("/api/grants", {"id": grant_id, "tenant": "demo",
-            "subjectType": "ROLE" if role else "USER", "subject": subject, "issuer": "demo",
-            "groupId": group, "toolId": tool["id"], "toolRevision": tool["revision"]})
+    def grant(self, grant_id, subject, tool, group="orders", role=False, client_type="CONSUMER"):
+        return self.admin("/api/grants", {"id": grant_id, "tenant": "fixture",
+            "subjectType": "ROLE" if role else "USER", "subject": subject, "issuer": "fixture",
+            "clientType": client_type, "groupId": group, "toolId": tool["id"], "toolRevision": tool["revision"]})
 
     def publish(self, tool, protected=False):
         return self.admin("/api/tools/" + tool["id"] + "/publish", {"resourceProtected": protected})
 
 
 def seed(env):
-    env.admin("/api/services", {"id": "orders", "tenant": "demo",
+    env.admin("/api/services", {"id": "orders", "tenant": "fixture",
         "endpoint": "http://127.0.0.1:" + str(env.fixture.port) + "/mcp",
         "transport": "streamable-http", "credentialRef": "MCP_UPSTREAM_ORDERS", "enabled": True})
     assert env.sync()["orders"]["outcome"] == "success"
@@ -245,7 +262,7 @@ def seed(env):
     assert len(initial["tools"]) == 2, initial
     assert all(t["state"] == "PENDING" for t in initial["tools"].values())
     by_name = {t["upstreamName"]: t for t in initial["tools"].values()}
-    env.admin("/api/groups", {"id": "orders", "tenant": "demo", "title": "订单运营",
+    env.admin("/api/groups", {"id": "orders", "tenant": "fixture", "title": "订单运营", "clientType": "CONSUMER",
         "description": "完整组含查询和退款；隐藏能力不得进入用户说明",
         "tools": {"find_order": by_name["query"]["id"], "refund_order": by_name["refund"]["id"]}})
     env.tools("alice", [])
@@ -262,8 +279,9 @@ def seed(env):
 
 def sdk_probe(env):
     """Use the SDK dependencies from the built runtime JAR, without another package manager."""
-    with tempfile.TemporaryDirectory(prefix="mcp-sdk-probe-") as temporary:
-        folder = Path(temporary)
+    folder = ROOT / "apps" / "runtime-server" / "target" / "sdk-probe"
+    folder.mkdir(exist_ok=True)
+    with contextlib.nullcontext():
         jar = ROOT / "apps" / "runtime-server" / "target" / "runtime-server-0.1.0-SNAPSHOT.jar"
         with zipfile.ZipFile(jar) as archive:
             for name in archive.namelist():
@@ -307,7 +325,7 @@ def verify(env, by_name):
     assert business_error[0] == 200 and business_error[1]["result"]["isError"], business_error
     env.fixture.call_error = False
 
-    env.admin("/api/groups", {"id": "another", "tenant": "demo", "title": "另一能力组", "description": "",
+    env.admin("/api/groups", {"id": "another", "tenant": "fixture", "title": "另一能力组", "clientType": "CONSUMER", "description": "",
         "tools": {"query_again": by_name["query"]["id"]}})
     env.tools("alice", ["find_order"])
     cross = env.rpc("alice", "tools/call", {"name": "query_again", "arguments": {"orderId": "123"}}, "another")
@@ -362,32 +380,64 @@ def verify(env, by_name):
     print("PASS: discovery, publication, identity isolation, scoped grants, forwarding, revocation, changes and lease expiry")
 
 
+def verify_identity_transport(env, tools):
+    for group, kind, user in [("staff", "EMPLOYEE", "employee"), ("partners", "APPLICATION", "app")]:
+        env.admin("/api/groups", {"id": group, "tenant": "fixture", "title": group,
+            "description": "Identity transport fixture", "clientType": kind,
+            "tools": {"find_order": tools["query"]["id"]}})
+        env.grant(group + "-query", "alice", tools["query"], group, client_type=kind)
+        env.tools(user, ["find_order"], group)
+        assert env.rpc("alice", "tools/list", group=group)[0] == 401
+    spoofed = {"X-AOMI-AUTH-UID": "forged-user", "x-aomi-third-appid": "forged-app",
+               "X-Mcp-Client-Type": "APPLICATION", "current-user-aomi-merchant": "forged-context",
+               "token": "must-not-forward", "channel": "must-not-forward", "X-API-Key": "must-not-forward"}
+    for user, group, kind, subject in [("alice", "orders", "CONSUMER", "alice"),
+                                     ("employee", "staff", "EMPLOYEE", "alice"),
+                                     ("app", "partners", "APPLICATION", "alice"),
+                                     ("bob", "orders", "CONSUMER", "bob")]:
+        name = "refund_order" if user == "bob" else "find_order"
+        result = env.rpc(user, "tools/call", {"name": name, "arguments": {"orderId": "123"}}, group, spoofed)
+        assert result[0] == 200, result
+        headers = env.fixture.call_headers[-1]
+        identity_header = "x-aomi-third-appid" if kind == "APPLICATION" else "x-aomi-auth-uid"
+        other_header = "x-aomi-auth-uid" if kind == "APPLICATION" else "x-aomi-third-appid"
+        assert headers[identity_header] == subject and headers["x-mcp-client-type"] == kind, headers
+        assert other_header not in headers
+        assert not any(h in headers for h in ["token", "channel", "x-api-key", "current-user-aomi-merchant"])
+    assert all(not any(k.lower().startswith(("x-aomi-", "x-mcp-client")) for k in headers)
+               for headers in env.fixture.discovery_headers)
+
+
+def verify_production_skeleton(env):
+    env.stop("gateway")
+    env.start("gateway", production=True)
+    # Wait only for the configuration snapshot; no credential operation is retried.
+    deadline = time.monotonic() + 10
+    while env.rpc(None, "tools/list")[0] == 503 and time.monotonic() < deadline:
+        time.sleep(.1)
+    for group in ["orders", "staff", "partners"]:
+        assert env.rpc(None, "tools/list", group=group)[0] == 401
+    for group, headers in [("orders", {"token": "42:" + str(int(time.time() * 1000) + 60000) + ":random", "channel": "ios"}),
+                           ("staff", {"Authorization": "Bearer employee-credential"}),
+                           ("partners", {"X-API-Key": "application-credential"})]:
+        status, body = env.rpc(None, "tools/list", group=group, headers=headers)
+        assert status == 501 and body["error"] == "authentication_not_implemented", (status, body)
+    print("PASS: production authentication skeleton rejects unverified identities; transport uses test-only identities")
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--demo", action="store_true", help="Keep the seeded local environment running")
-    args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix="mcp-governance-") as directory:
+    argparse.ArgumentParser(description="Four-process framework verification with a test-only identity launcher").parse_args()
+    workspace = ROOT / "run"
+    workspace.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="integration-", dir=workspace) as directory:
         env = Environment(directory)
         try:
             for name in ["admin", "runtime", "discovery", "gateway"]:
                 env.start(name)
             by_name = seed(env)
-            if args.demo:
-                access_file = ROOT / "run" / "demo-access.json"
-                access_file.parent.mkdir(exist_ok=True)
-                descriptor = os.open(access_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(descriptor, "w") as handle:
-                    json.dump({"urls": env.urls, "tokens": {key: env.tokens[key] for key in ["admin", "alice", "bob"]}},
-                              handle, indent=2)
-                print("Local demo ready. Open the admin URL recorded in run/demo-access.json.")
-                print("Demo credentials are in that local ignored file. Press Ctrl+C to stop and erase the demo.")
-                try:
-                    while True:
-                        time.sleep(1)
-                finally:
-                    access_file.unlink(missing_ok=True)
-            else:
-                verify(env, by_name)
+            verify_identity_transport(env, by_name)
+            verify(env, by_name)
+            verify_production_skeleton(env)
         finally:
             env.close()
             if sys.exc_info()[0] is not None:

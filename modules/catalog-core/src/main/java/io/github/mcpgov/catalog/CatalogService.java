@@ -88,6 +88,7 @@ public final class CatalogService {
         return save(snapshot.services(), tools, snapshot.groups(), snapshot.grants());
     }
     public synchronized Snapshot group(CapabilityGroup group) {
+        if (group.clientType() == null) throw new IllegalArgumentException("Group clientType is required");
         CapabilityGroup previous = snapshot.groups().get(group.id());
         if (previous != null && !previous.tenant().equals(group.tenant())) throw new IllegalArgumentException("Group tenant is immutable");
         group.tools().values().forEach(id -> {
@@ -99,12 +100,13 @@ public final class CatalogService {
         return save(snapshot.services(), snapshot.tools(), groups, snapshot.grants());
     }
     public synchronized Snapshot grant(Grant grant) {
+        if (grant.clientType() == null) throw new IllegalArgumentException("Grant clientType is required");
         ToolEntry tool = requireTool(grant.toolId());
         if (!tool.tenant().equals(grant.tenant()) || tool.state() != ToolState.PUBLISHED || tool.revision() != grant.toolRevision())
             throw new IllegalArgumentException("Grant must reference the current published revision");
         if (grant.groupId() != null) {
             CapabilityGroup group = snapshot.groups().get(grant.groupId());
-            if (group == null || !group.tenant().equals(grant.tenant()) || !group.tools().containsValue(tool.id()))
+            if (group == null || group.clientType() != grant.clientType() || !group.tenant().equals(grant.tenant()) || !group.tools().containsValue(tool.id()))
                 throw new IllegalArgumentException("Invalid grant group");
         }
         var grants = new HashMap<>(snapshot.grants()); grants.put(grant.id(), grant);

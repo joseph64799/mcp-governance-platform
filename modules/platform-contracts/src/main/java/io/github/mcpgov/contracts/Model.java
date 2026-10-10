@@ -8,10 +8,12 @@ public final class Model {
     private Model() {}
     public enum ToolState { PENDING, PUBLISHED, DISABLED, REMOVED }
     public enum SubjectType { USER, ROLE }
+    public enum ClientType { CONSUMER, EMPLOYEE, APPLICATION }
 
-    public record Caller(String subject, String tenant, String issuer, Set<String> roles) {
+    public record Caller(String subject, String tenant, String issuer, Set<String> roles, ClientType clientType) {
         public Caller {
             requireText(subject, "subject"); requireText(tenant, "tenant"); requireText(issuer, "issuer");
+            Objects.requireNonNull(clientType, "clientType");
             roles = roles == null ? Set.of() : Set.copyOf(roles);
         }
     }
@@ -46,7 +48,7 @@ public final class Model {
         }
     }
     public record CapabilityGroup(String id, String tenant, String title, String description,
-                                  Map<String,String> tools) {
+                                  Map<String,String> tools, ClientType clientType) {
         public CapabilityGroup {
             requireId(id); requireId(tenant); requireText(title, "title");
             description = description == null ? "" : description;
@@ -56,7 +58,7 @@ public final class Model {
     }
     /** toolRevision is explicit: a schema/meaning change cannot silently inherit the old grant. */
     public record Grant(String id, String tenant, SubjectType subjectType, String subject,
-                        String issuer, String groupId, String toolId, long toolRevision) {
+                        String issuer, String groupId, String toolId, long toolRevision, ClientType clientType) {
         public Grant {
             requireId(id); requireId(tenant); Objects.requireNonNull(subjectType);
             requireText(subject, "subject"); requireText(issuer, "issuer"); requireText(toolId, "toolId");

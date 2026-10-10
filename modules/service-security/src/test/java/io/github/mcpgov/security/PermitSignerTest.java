@@ -11,7 +11,7 @@ class PermitSignerTest {
     static final String SECRET = "unit-test-secret-only-never-a-deployment-credential";
     final Clock clock = Clock.fixed(Instant.ofEpochSecond(1000), ZoneOffset.UTC);
     InvocationPermit permit(long expiry) {
-        return new InvocationPermit("nonce", new Caller("alice", "tenant", "issuer", Set.of()), "ops", 4, Set.of("tool"),
+        return new InvocationPermit("nonce", new Caller("alice", "tenant", "issuer", Set.of(), ClientType.CONSUMER), "ops", 4, Set.of("tool"),
             1000, expiry, PermitSigner.hashRequest("POST", "/mcp/ops", "{}"));
     }
     @Test void authenticRequestIsAcceptedOnceAndCannotChangeBodyOrPath() {

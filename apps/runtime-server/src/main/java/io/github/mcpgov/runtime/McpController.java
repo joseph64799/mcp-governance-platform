@@ -30,7 +30,7 @@ public class McpController {
             if (!group.equals(permit.groupId()) || snapshot.version() != permit.snapshotVersion())
                 throw new PlatformException(409, "configuration_version_mismatch");
             var capability = snapshot.groups().get(group);
-            if (capability == null || !capability.tenant().equals(permit.caller().tenant()))
+            if (capability == null || capability.clientType() != permit.caller().clientType() || !capability.tenant().equals(permit.caller().tenant()))
                 throw new PlatformException(403, "group_access_denied");
             if ("notifications/initialized".equals(request.get("method"))) return ResponseEntity.accepted().<String>build();
             long start = System.nanoTime();

@@ -31,13 +31,4 @@ mcp:
   snapshot:
     refresh-ms: ${SNAPSHOT_REFRESH_MS:2000}
     max-age-ms: ${SNAPSHOT_MAX_AGE_MS:15000}
-  identity:
-    mode: ${IDENTITY_MODE:jwt}
-    issuer: ${JWT_ISSUER:}
-    jwks-uri: ${JWT_JWKS_URI:}
-    audience: ${JWT_AUDIENCE:}
-    tenant: ${JWT_TENANT:}
-    roles-claim: ${JWT_ROLES_CLAIM:roles}
-    demo-alice-token: ${DEMO_ALICE_TOKEN:}
-    demo-bob-token: ${DEMO_BOB_TOKEN:}
   allowed-origins: ${MCP_ALLOWED_ORIGINS:}

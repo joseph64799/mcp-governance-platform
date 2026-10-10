@@ -10,36 +10,29 @@ Spring 装配默认 Bean 使用 ConditionalOnMissingBean。自定义配置需要
 
 ## 三类场景的统一扩展原则
 
-运营／员工、应用／第三方和 C 端共用本节扩展接口；场景默认策略与完整目标见 [接入场景与能力视图设计](ACCESS-MODEL.md)。当前只提供 JWT／demo、用户／角色授权和单组入口，后续接口设计不能写成已存在的 Bean 或配置。
+运营／员工、应用／第三方和 C 端共用本节扩展接口；场景默认策略与完整目标见 [接入场景与能力视图设计](ACCESS-MODEL.md)。当前提供三端认证骨架、按端隔离的主体／角色授权和单组入口；真实凭证校验待实现。
 
-Key 属于凭证形式，应用属于主体类型。正式 Key 适配需验证有效性与撤销状态，映射到稳定应用主体；凭证轮换沿用主体授权。应用主体应有明确类型或可信命名空间，避免与同名员工／消费者混淆。正式应用模型、Key 适配器和专用模板管理尚待实现；当前 ROLE 授权可复用为同类用户的基础能力。
+Key 属于凭证形式，应用属于主体类型。正式 Key 适配需验证有效性与撤销状态，映射到稳定应用主体；凭证轮换沿用主体授权。应用主体应有明确类型或可信命名空间，避免与同名员工／消费者混淆。应用主体类型与 Key 适配器骨架已提供，真实校验和专用模板管理待实现；当前 ROLE 授权可复用为同类用户的基础能力。
 
 C 端基础工具集可通过用户类型等模板统一授权，不需要逐人配置相同工具。工具模板也受当前修订和发布规则控制；用户订单范围与业务状态检查在调用链处理。固定策略是授权实现的一种，不绕过公共鉴权。
 
-## 身份接入：IdentityProvider 和 IdentityMapper
-
-IdentityProvider 只接收入口 Authorization 值，成功返回 Caller；验证失败抛出 PlatformException(401, ...)：
+## 身份接入：IdentityProvider
 
 ~~~java
 public interface IdentityProvider {
-    Caller authenticate(String authorizationHeader);
+    Caller authenticate(AuthenticationRequest request);
 }
 ~~~
 
-Caller 包含 subject、tenant、issuer 和 roles。subject 不单独作为全局用户键，授权匹配同时检查 tenant 与 issuer。外部邮箱相同不代表平台身份相同。
+AuthenticationRequest 包含 groupId、tenant、clientType，以及 authorization、token、channel、apiKey。前三者由服务端目录确定，凭证字段只在网关使用。请求对象的 toString 隐去凭证，适配器也不得记录原始凭证。
 
-默认 JWT 模式：
+Gateway 默认装配 RoutingIdentityProvider，按 clientType 调用 ConsumerIdentityProvider、EmployeeIdentityProvider、ApiKeyIdentityProvider。可在 Gateway 扫描范围内提供自定义 IdentityProvider Bean，组合这三个适配器的子类；不需要增加服务。
 
-- Nimbus 验证签名，且要求配置的 issuer、audience、有效期匹配。
-- subject 来自已验证 token 的 sub。
-- tenant 来自部署可信配置 JWT_TENANT。
-- roles 读取已验证 claims 的指定数组，默认为 roles。
-- IdentityMapper 可以接入企业组织 / 用户映射库，将外部账号映射为平台身份。
-- 此适配器不接受前端自报的组织请求头，不通过解析未验证 JWT 直接信任身份。
+- ConsumerIdentityProvider.validateLoginState：接现有 Redis TokenData.accessToken 校验；不能用解析出的 userId 代替验证。
+- EmployeeIdentityProvider.verifyCredential / mapEmployee：企业凭证验证及业务员工账号映射分别实现。
+- ApiKeyIdentityProvider.validateApiKey：Key 验证成功后返回稳定的应用身份。
 
-企业采用钉钉时，可以由企业登录服务完成授权码交换、应用验证与账号绑定，再签发本平台受众的 JWT，继续使用默认适配器；也可以增加企业专用 IdentityProvider。真实接入需要企业应用凭据、授权范围、回调和账号映射配置，不能用固定假用户代替。
-
-同一部署接入多个企业时，创建可信来源注册表：先选择允许的身份来源，再用该来源的验证器验证；不能把 token 里的任意 issuer 自动当作可访问的 JWKS 地址。统一结果再交给现有授权模块。默认单 issuer 适配器不声称已经支持动态多企业登录。
+未实现方法抛出 501 authentication_not_implemented，缺失／格式错误的凭证抛出 401 invalid_identity。不得为演示返回固定用户。成功 Caller 包含 subject、tenant、issuer、roles、clientType；网关再次检查类型和组织与入口一致。真实企业认证、客户端取得凭证和 Key 管理均留在 [身份 TODO](IDENTITY.md) 中。
 
 ## 授权：AuthorizationProvider
 
@@ -89,7 +82,7 @@ CredentialProvider 根据 credentialRef 获取服务凭据。初始实现只接�
 
 Runtime 和 Discovery 均可替换 CredentialProvider / McpConnector Bean。凭据轮换、密钥管理系统和服务身份应放在这些适配器内，而不是在工具定义中添加明文密钥。这里的 MCP_UPSTREAM_* 是业务上游凭据，不是对外应用 Key 的已实现认证方案。
 
-当前 invoke(service, tool, arguments) 不携带 Caller，平台级工具可使用该模型。面向用户数据的工具需增加可信执行上下文／受控数据范围注入扩展，明确应用主体、终端用户及业务身份映射，由上游验证受众、有效期和来源。用户入口 Token 和 Gateway → Runtime 许可不直接转发到业务服务；不得把 Agent 提交的 userId 当作可信身份。前置 ResourceAccessChecker 的布尔结果不能自动限制列表查询的返回范围。
+当前 invoke(service, tool, arguments, caller) 显式携带已认证主体，由 SDK 连接器写入三端业务身份头。Discovery 不带终端身份。上游验证平台服务凭据后才可通过注解取身份；消费者／员工使用通用用户 ID，应用使用第三方 ID。多主体委托和数据范围注入不在本次实现内。用户入口 Token 和 Gateway → Runtime 许可不直接转发到业务服务；不得把 Agent 提交的 userId 当作可信身份。前置 ResourceAccessChecker 的布尔结果不能自动限制列表查询的返回范围。
 
 discover 当前只返回工具定义，忽略上游 initialize 的说明。说明采集需扩展发现结果契约并进入管理审核，不能在转接层无审核注入模型上下文。
 

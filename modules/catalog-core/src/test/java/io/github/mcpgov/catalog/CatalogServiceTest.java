@@ -12,6 +12,19 @@ class CatalogServiceTest {
     @TempDir Path directory;
     ServiceRegistration service = new ServiceRegistration("orders", "acme", "http://localhost:9999/mcp", "streamable-http", null, true);
     CatalogService catalog() { return new CatalogService(new FileCatalogStore(directory.resolve("catalog.json")), Set.of("localhost")); }
+    @Test void legacyCatalogLoadsWithoutAssigningAClientTypeAndRequiresExplicitRepair() {
+        var oldGroup = Json.read("{\"id\":\"ops\",\"tenant\":\"acme\",\"title\":\"Ops\",\"tools\":{}}", CapabilityGroup.class);
+        var oldGrant = Json.read("{\"id\":\"grant\",\"tenant\":\"acme\",\"subjectType\":\"USER\",\"subject\":\"alice\",\"issuer\":\"company\",\"toolId\":\"tool\",\"toolRevision\":1}", Grant.class);
+        var store = new FileCatalogStore(directory.resolve("catalog.json"));
+        store.save(0, new Snapshot(1, java.time.Instant.now(), Map.of(), Map.of(), Map.of("ops", oldGroup), Map.of("grant", oldGrant)));
+        var catalog = catalog();
+        assertNull(catalog.snapshot().groups().get("ops").clientType());
+        assertNull(catalog.snapshot().grants().get("grant").clientType());
+        assertThrows(IllegalArgumentException.class, () -> catalog.group(oldGroup));
+        assertThrows(IllegalArgumentException.class, () -> catalog.grant(oldGrant));
+        catalog.group(new CapabilityGroup("ops", "acme", "Ops", "", Map.of(), ClientType.EMPLOYEE));
+        assertEquals(ClientType.EMPLOYEE, catalog().snapshot().groups().get("ops").clientType());
+    }
     ObservedTool observed(String description) {
         return new ObservedTool("query", description, Map.of("type", "object", "properties", Map.of()), Map.of());
     }
@@ -23,7 +36,7 @@ class CatalogServiceTest {
         catalog.register(service);
         var entry = catalog.observe(report(List.of(observed("old")))).tools().values().iterator().next();
         assertEquals(ToolState.PENDING, entry.state());
-        var grant = new Grant("alice-query", "acme", SubjectType.USER, "alice", "company", null, entry.id(), entry.revision());
+        var grant = new Grant("alice-query", "acme", SubjectType.USER, "alice", "company", null, entry.id(), entry.revision(), ClientType.CONSUMER);
         assertThrows(IllegalArgumentException.class, () -> catalog.grant(grant));
         catalog.publish(entry.id(), false); catalog.grant(grant);
         long stable = catalog.snapshot().version();
@@ -60,7 +73,7 @@ class CatalogServiceTest {
     @Test void rejectCrossTenantGroupsAndUnapprovedDestinationsAndExternalSchemas() {
         var catalog = catalog(); catalog.register(service);
         var entry = catalog.observe(report(List.of(observed("query")))).tools().values().iterator().next();
-        assertThrows(IllegalArgumentException.class, () -> catalog.group(new CapabilityGroup("ops", "other", "ops", "", Map.of("query", entry.id()))));
+        assertThrows(IllegalArgumentException.class, () -> catalog.group(new CapabilityGroup("ops", "other", "ops", "", Map.of("query", entry.id()), ClientType.CONSUMER)));
         assertThrows(IllegalArgumentException.class, () -> catalog.register(
             new ServiceRegistration("bad", "acme", "http://unapproved.example/mcp", "streamable-http", null, true)));
         assertThrows(IllegalArgumentException.class, () -> new ObservedTool("bad", "",

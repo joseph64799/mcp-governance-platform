@@ -6,6 +6,7 @@ import io.github.mcpgov.contracts.*;
 import io.github.mcpgov.contracts.Model.*;
 import io.github.mcpgov.control.SnapshotCache;
 import io.github.mcpgov.identity.IdentityProvider;
+import io.github.mcpgov.identity.AuthenticationRequest;
 import io.github.mcpgov.security.PermitSigner;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
@@ -63,13 +64,19 @@ public class McpAdmissionFilter implements WebFilter, Ordered {
         }).onErrorResume(error -> reject(exchange, error));
     }
     private String admit(ServerWebExchange exchange, String path, byte[] bytes) {
-        Caller caller = identities.authenticate(exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
         String body = new String(bytes, StandardCharsets.UTF_8);
         Map<String,Object> request = Rpc.request(body);
         Snapshot snapshot = snapshots.current();
         String groupId = path.substring("/mcp/".length());
         CapabilityGroup group = snapshot.groups().get(groupId);
-        if (group == null || !group.tenant().equals(caller.tenant())) throw new PlatformException(403, "group_access_denied");
+        if (group == null) throw new PlatformException(403, "group_access_denied");
+        if (group.clientType() == null) throw new PlatformException(503, "group_identity_not_configured");
+        HttpHeaders headers = exchange.getRequest().getHeaders();
+        Caller caller = identities.authenticate(new AuthenticationRequest(groupId, group.tenant(), group.clientType(),
+            headers.getFirst(HttpHeaders.AUTHORIZATION), headers.getFirst("token"),
+            headers.getFirst("channel"), headers.getFirst("X-API-Key")));
+        if (caller == null || group.clientType() != caller.clientType() || !group.tenant().equals(caller.tenant()))
+            throw new PlatformException(403, "group_access_denied");
         Set<String> allowed;
         if ("tools/call".equals(request.get("method"))) {
             ToolEntry selected = permissions.authorizeCall(caller, group, (String) Rpc.params(request).get("name"),
@@ -96,6 +103,9 @@ public class McpAdmissionFilter implements WebFilter, Ordered {
                 headers.addAll(super.getHeaders());
                 // User credentials and caller-supplied execution context must never reach runtime/upstreams.
                 headers.remove(HttpHeaders.AUTHORIZATION); headers.remove(HttpHeaders.COOKIE);
+                headers.remove("token"); headers.remove("channel"); headers.remove("X-API-Key");
+                headers.headerNames().stream().filter(BusinessIdentityHeaders::isIdentityHeader)
+                    .toList().forEach(headers::remove);
                 headers.remove(PermitSigner.HEADER); headers.remove(HttpHeaders.TRANSFER_ENCODING);
                 headers.set(PermitSigner.HEADER, permit); headers.setContentLength(bytes.length);
                 return headers;

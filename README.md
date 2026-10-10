@@ -24,7 +24,7 @@
 
 固定工具目录与用户数据隔离可以同时成立。三类场景复用同一套认证、授权、目录与转接内核，不按权限变化频率拆服务。
 
-**当前可运行入口仍为 `/mcp/{groupId}`，认证为 JWT／demo。** 已知能力组的固定接入可继续使用该入口。只配置一个地址并获取跨组能力的 `/mcp`、正式 Key／应用主体、C 端专用接入样例与模板配置、完整 Doc 交付、客户端自动刷新及业务委托上下文均为待实现项，详见[设计差异表](docs/ACCESS-MODEL.md#9-实现差异与验收)。
+**入口为 `/mcp/{groupId}`，分组指定 CONSUMER／EMPLOYEE／APPLICATION。** 三端认证骨架及身份传递已接入；Redis 登录态、钉钉等员工凭证、API Key 的真实校验方法保留 TODO，当前正式应用会返回 501，不提供假身份或 demo 放行。三端业务 API 分别组织，下游复用用户／第三方注解契约。见[三端身份接入](docs/IDENTITY.md)。跨组 `/mcp`、完整 Doc、客户端自动刷新仍待实现。
 
 ## 工程划分
 
@@ -40,8 +40,8 @@
 | 库模块 | 使用方 | 说明 |
 |---|---|---|
 | platform-contracts | 全部 | 不可变领域契约、JSON、RPC 基础验证 |
-| identity-spi | identity-adapters、网关 | IdentityProvider / IdentityMapper |
-| identity-adapters | 网关 | 验证签名、有效期、来源和受众的 JWT 接入；受限 demo 身份 |
+| identity-spi | identity-adapters、网关 | IdentityProvider / AuthenticationRequest |
+| identity-adapters | 网关 | C 端 Token、企业员工、API Key 三端认证骨架及路由 |
 | authorization-core | 网关 | 显式工具授权、组织和来源隔离、资源范围接口 |
 | catalog-core | 管理后台 | 工具生命周期、分组和授权，CatalogStore 持久化接口 |
 | mcp-connector-spi | 发现、运行核心 | MCP 连接器与上游凭据接口 |
@@ -52,7 +52,7 @@
 | discovery-core | 发现 | 全部分页成功后提交观察 |
 | runtime-core | 运行 | 能力组映射、可见工具视图和调用转接 |
 
-## 已实现的完整链路
+## 治理链路（成功调用需补完认证）
 
 1. 管理员登记业务 MCP 服务。发现服务初始化连接，读取所有工具分页后才提交目录。
 2. 新增、修改或重新出现的工具进入待审核状态；审核发布后仍需授权对应修订。
@@ -61,11 +61,11 @@
 5. Runtime 只接受网关签发的短期、请求绑定执行许可，生成该用户的工具列表和“组标题＋可见工具名”摘要，或调用原始 MCP 工具；完整组 description 当前未返回。
 6. 管理员撤权或停用工具后，新快照同时影响列表和真实调用。旧列表不构成授权依据。
 
-业务 MCP 凭据独立配置，用户 Bearer 不透传。当前连接器调用参数不含 Caller，面向用户业务的可信上下文尚待适配。标记为资源敏感的工具会执行资源授权接口；默认实现拒绝，该接口不自动注入查询范围。
+业务 MCP 凭据独立配置，入口凭证不透传。Caller 经签名许可到达 Runtime，再由连接器生成业务身份头；Discovery 不携带终端身份。外部 Bridge 的来源验证、注解和 Feign 适配尚待联调。标记为资源敏感的工具会执行资源授权接口；默认实现拒绝，该接口不自动注入查询范围。
 
-## 本地构建与演示
+## 本地构建与验证
 
-要求 **JDK 21+、Maven 3.9+**；演示和集成验证另外需要 Python 3.10+，不需要第三方 Python 包。
+要求 **JDK 21+、Maven 3.9+**；集成验证另外需要 Python 3.10+，不需要第三方 Python 包。
 
 ~~~bash
 mvn -B -ntp verify
@@ -74,26 +74,21 @@ python3 scripts/smoke.py
 
 集成脚本会启动四个真实 JVM 进程以及测试用 MCP 服务，并使用官方 MCP Java 客户端连接网关，自动验证目录同步、发布、分组、不同用户列表、调用与拒绝、撤权、定义变更、同步失败保留目录、持久化重启、快照过期拒绝。
 
-查看可操作的本地管理界面：
+正式应用与测试装配分开。集成脚本使用 `target/test-classes` 中的认证替身，随后启动正式 Gateway 验证三端均不放行未校验凭证。测试替身不进入可执行 JAR，也没有生产 demo 开关。脚本同时检查上游收到的身份头、伪造身份隔离及连续调用不串身份。
 
-~~~bash
-python3 scripts/smoke.py --demo
-~~~
-
-脚本使用随机空闲端口和临时凭据。启动后查看本地被 Git 忽略的 `run/demo-access.json`：其中包含管理页面地址，以及管理员、Alice、Bob 的演示令牌。打开管理页面，输入管理员令牌连接。Alice 可查询订单，Bob 的角色可使用退款工具。按 Ctrl+C 停止进程并清理演示数据；该演示环境不用于保存正式配置。
-
-需要固定地址、JWT 接入或持久化数据时，参阅[运行配置](docs/OPERATIONS.md)。每个应用都生成单独的可执行 JAR，可独立启动。
+管理界面随 Admin 提供。启动配置见[运行配置](docs/OPERATIONS.md)；四个应用可独立启动，MCP 成功业务调用需先补完认证适配。
 
 ## 认证方式如何扩展
 
-认证解决“是谁”，授权解决“能做什么”。调用者以 **组织 + 身份来源 + 外部主体** 隔离，角色来自验证过的身份声明。
+认证解决“是谁”，授权解决“能做什么”。调用主体以 **接入端 + 组织 + 身份来源 + 业务主体 ID** 隔离。
 
-- 默认 JWT 适配器验证签名、issuer、audience 和有效期，适用于企业身份系统签发给本平台的访问凭证。
-- 钉钉或其他企业登录在 `IdentityProvider / IdentityMapper` 接入。真实登录的授权码交换、应用密钥、回调和账号绑定需要企业配置，本项目没有冒充已接入。
-- 外部权限系统可替换 `AuthorizationProvider`；资源级权限接在 `ResourceAccessChecker`。
-- 上游服务凭据通过 `CredentialProvider` 获取，目录仅保存凭据引用。
+- C 端骨架复用现有网关的 token/channel、有效期及 Redis 键构造，`validateLoginState` 留待接入。
+- 员工骨架预留企业凭证验证及业务员工映射；第三方骨架预留 Key 校验及稳定应用映射。
+- 扩展 `IdentityProvider.authenticate(AuthenticationRequest)`，成功后才创建带 clientType 的 Caller。
+- 工具权限和资源权限继续通过 `AuthorizationProvider`、`ResourceAccessChecker` 扩展。
+- 上游凭据经 `CredentialProvider` 配置，业务身份头由已认证 Caller 生成，不接受凭据配置覆盖身份。
 
-这些变化不要求重写目录、发现、分组和 MCP 转接模块。详见[扩展示例及约束](docs/EXTENSIONS.md)。
+参阅[三端身份与后续 TODO](docs/IDENTITY.md)和[扩展开发](docs/EXTENSIONS.md)。
 
 ## 一致性与安全边界
 
@@ -110,7 +105,7 @@ python3 scripts/smoke.py --demo
 | 能力 | 当前实现 |
 |---|---|
 | 管理后台 | 可操作的服务、目录、发布、分组、授权页面；初始管理员令牌模式 |
-| 三类接入策略 | 本次明确目标模型；正式 Key、应用主体及 C 端专用接入样例与模板配置尚未实现 |
+| 三类接入策略 | 三端主体、分组及授权隔离已实现；三类真实凭证校验留 TODO |
 | 入口范围 | 已知组 `/mcp/{groupId}` 已实现；统一跨组 `/mcp` 待实现 |
 | 能力说明 | 初始化仅返回组标题与可见工具名；完整 Doc 交付与说明可见策略待实现 |
 | 工具发现 | Streamable HTTP；定时与手动同步；完整分页；失败不误删 |

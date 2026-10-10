@@ -2,7 +2,7 @@ package io.github.mcpgov.gateway;
 
 import io.github.mcpgov.audit.*;
 import io.github.mcpgov.authorization.*;
-import io.github.mcpgov.contracts.Model.Caller;
+import io.github.mcpgov.contracts.Model.ClientType;
 import io.github.mcpgov.control.*;
 import io.github.mcpgov.identity.*;
 import io.github.mcpgov.identity.adapters.*;
@@ -16,7 +16,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @SpringBootApplication
 public class GatewayApplication {
@@ -40,29 +39,10 @@ public class GatewayApplication {
     @Bean @ConditionalOnMissingBean AuthorizationProvider authorization(ResourceAccessChecker resources) {
         return new DefaultAuthorizationProvider(resources);
     }
-    @Bean @ConditionalOnMissingBean IdentityMapper identityMapper(Environment env) {
-        return (issuer, subject, claims) -> {
-            String tenant = env.getRequiredProperty("mcp.identity.tenant");
-            Object claim = claims.get(env.getProperty("mcp.identity.roles-claim", "roles"));
-            Set<String> roles = claim instanceof Collection<?> values
-                ? values.stream().filter(String.class::isInstance).map(String.class::cast).collect(Collectors.toUnmodifiableSet()) : Set.of();
-            return new Caller(subject, tenant, issuer, roles);
-        };
-    }
-    @Bean @ConditionalOnMissingBean IdentityProvider identity(Environment env, IdentityMapper mapper) {
-        String mode = env.getProperty("mcp.identity.mode", "jwt");
-        if ("demo".equals(mode)) {
-            if (!Arrays.asList(env.getActiveProfiles()).contains("demo") ||
-                !"127.0.0.1".equals(env.getProperty("server.address")))
-                throw new IllegalArgumentException("Demo identity requires the demo profile and loopback binding");
-            return new DemoIdentityProvider(Map.of(
-                env.getRequiredProperty("mcp.identity.demo-alice-token"), new Caller("alice", "demo", "demo", Set.of("operator")),
-                env.getRequiredProperty("mcp.identity.demo-bob-token"), new Caller("bob", "demo", "demo", Set.of("reviewer"))));
-        }
-        if (!"jwt".equals(mode)) throw new IllegalArgumentException("Unknown identity mode");
-        String tenant = env.getProperty("mcp.identity.tenant");
-        if (tenant == null || tenant.isBlank()) throw new IllegalArgumentException("JWT tenant mapping must be configured");
-        return new JwtIdentityProvider(env.getRequiredProperty("mcp.identity.issuer"),
-            env.getRequiredProperty("mcp.identity.jwks-uri"), env.getRequiredProperty("mcp.identity.audience"), mapper);
+    @Bean @ConditionalOnMissingBean IdentityProvider identity() {
+        return new RoutingIdentityProvider(Map.of(
+            ClientType.CONSUMER, new ConsumerIdentityProvider(),
+            ClientType.EMPLOYEE, new EmployeeIdentityProvider(),
+            ClientType.APPLICATION, new ApiKeyIdentityProvider()));
     }
 }

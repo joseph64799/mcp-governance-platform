@@ -15,7 +15,8 @@ public final class McpFacade {
         if (!groupId.equals(permit.groupId()) || snapshot.version() != permit.snapshotVersion())
             throw new PlatformException(409, "configuration_version_mismatch");
         CapabilityGroup group = snapshot.groups().get(groupId);
-        if (group == null || !group.tenant().equals(permit.caller().tenant())) throw new PlatformException(403, "group_access_denied");
+        if (group == null || group.clientType() != permit.caller().clientType() || !group.tenant().equals(permit.caller().tenant()))
+            throw new PlatformException(403, "group_access_denied");
         String method = String.valueOf(request.get("method"));
         Map<String,Object> params = request.get("params") instanceof Map<?,?> map ? (Map<String,Object>) map : Map.of();
         return switch (method) {
@@ -31,7 +32,7 @@ public final class McpFacade {
                 ToolEntry tool = toolId == null ? null : snapshot.tools().get(toolId);
                 if (!available(tool, permit, snapshot)) throw new PlatformException(403, "tool_access_denied");
                 Map<String,Object> arguments = params.get("arguments") instanceof Map<?,?> map ? (Map<String,Object>) map : Map.of();
-                yield connector.invoke(snapshot.services().get(tool.serviceId()), tool, arguments);
+                yield connector.invoke(snapshot.services().get(tool.serviceId()), tool, arguments, permit.caller());
             }
             default -> throw new PlatformException(400, "unsupported_mcp_method");
         };

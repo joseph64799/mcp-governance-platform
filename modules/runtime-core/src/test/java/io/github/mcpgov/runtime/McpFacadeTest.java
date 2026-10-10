@@ -13,7 +13,7 @@ class McpFacadeTest {
     final AtomicInteger invocations = new AtomicInteger();
     final McpFacade facade = new McpFacade(new McpConnector() {
         public List<ObservedTool> discover(ServiceRegistration service) { return List.of(); }
-        public Map<String,Object> invoke(ServiceRegistration service, ToolEntry tool, Map<String,Object> args) {
+        public Map<String,Object> invoke(ServiceRegistration service, ToolEntry tool, Map<String,Object> args, Caller caller) {
             invocations.incrementAndGet(); return Map.of("content", List.of(Map.of("type", "text", "text", tool.upstreamName())));
         }
     });
@@ -23,8 +23,8 @@ class McpFacadeTest {
         Map.of("source", new ServiceRegistration("source", "tenant", "http://localhost/mcp", "streamable-http", null, true)),
         Map.of("query", tool("query"), "refund", tool("refund")),
         Map.of("orders", new CapabilityGroup("orders", "tenant", "Orders", "Contains query and refund",
-            Map.of("find_order", "query", "refund_order", "refund"))), Map.of()); }
-    InvocationPermit permit(long version) { return new InvocationPermit("nonce", new Caller("alice", "tenant", "issuer", Set.of()),
+            Map.of("find_order", "query", "refund_order", "refund"), ClientType.CONSUMER)), Map.of()); }
+    InvocationPermit permit(long version) { return new InvocationPermit("nonce", new Caller("alice", "tenant", "issuer", Set.of(), ClientType.CONSUMER),
         "orders", version, Set.of("query"), 1, 16, "hash"); }
     Map<String,Object> call(String name) { return Map.of("method", "tools/call", "params", Map.of("name", name)); }
     @Test void userSpecificDefinitionsAndInstructionsDoNotDiscloseHiddenTools() {

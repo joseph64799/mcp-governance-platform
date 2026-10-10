@@ -2,6 +2,7 @@
 let snapshot = null;
 const $ = id => document.getElementById(id);
 const labels = {PENDING:"待审核",PUBLISHED:"已发布",DISABLED:"已停用",REMOVED:"已移除"};
+const clientLabels = {CONSUMER:"C 端用户",EMPLOYEE:"公司员工",APPLICATION:"第三方应用"};
 function notice(message, failed=false) { $("notice").textContent=message; $("notice").classList.toggle("error",failed); }
 async function api(path,method="GET",body) {
   const token=$("token").value.trim();
@@ -44,19 +45,29 @@ function render() {
     const alias=document.createElement("input");alias.type="text";alias.value=t.upstreamName.replace(/[^A-Za-z0-9_.-]/g,"_");alias.placeholder="对外工具名称";alias.setAttribute("aria-label",t.upstreamName+" 的对外名称");
     row.append(check,label,alias);$("group-tools").append(row);
   });
-  table("group-list",["分组","组织","统一名称","工具数","操作"],groups.map(g=>[g.id,g.tenant,g.title,Object.keys(g.tools).length,button("编辑",()=>{
-    const form=$("group-form");["id","tenant","title","description"].forEach(k=>form.elements[k].value=g[k]||"");
+  table("group-list",["分组","接入端","组织","统一名称","工具数","操作"],groups.map(g=>[g.id,clientLabels[g.clientType]||"待配置",g.tenant,g.title,Object.keys(g.tools).length,button("编辑",()=>{
+    const form=$("group-form");["id","tenant","title","description","clientType"].forEach(k=>form.elements[k].value=g[k]||"");
     document.querySelectorAll(".binding").forEach(row=>{const check=row.querySelector("[type=checkbox]");const binding=Object.entries(g.tools).find(([,id])=>id===check.dataset.toolId);check.checked=!!binding;if(binding)row.querySelector("[type=text]").value=binding[0];});
     form.scrollIntoView({behavior:"smooth"});
   })]));
   $("grant-group").replaceChildren();option($("grant-group"),"","所有引用此工具的组");
   groups.forEach(g=>option($("grant-group"),g.id,g.title+" · "+g.tenant));
   $("grant-tool").replaceChildren();tools.filter(t=>t.state==="PUBLISHED").forEach(t=>option($("grant-tool"),t.id,t.upstreamName+" · "+t.serviceId+" · 修订 "+t.revision));
-  table("grant-list",["对象","组织 / 来源","范围","工具 / 修订","操作"],Object.values(snapshot.grants).map(g=>[
-    g.subjectType+" · "+g.subject,g.tenant+" / "+g.issuer,g.groupId||"所有引用组",
+  table("grant-list",["对象","接入端","组织 / 来源","范围","工具 / 修订","操作"],Object.values(snapshot.grants).map(g=>[
+    g.subjectType+" · "+g.subject,clientLabels[g.clientType]||"待配置",g.tenant+" / "+g.issuer,g.groupId||"所有引用组",
     (snapshot.tools[g.toolId]?.upstreamName||g.toolId)+" / "+g.toolRevision,
-    button("撤销",()=>perform(()=>api("/api/grants/"+encodeURIComponent(g.id),"DELETE"),"授权已撤销，将在配置同步后生效。"))
+    grantActions(g)
   ]));
+}
+function grantActions(g) {
+  const actions=document.createElement("div");
+  actions.append(button("编辑",()=>{
+    const form=$("grant-form");
+    ["id","tenant","subjectType","subject","issuer","groupId","toolId","clientType"].forEach(k=>form.elements[k].value=g[k]||"");
+    form.scrollIntoView({behavior:"smooth"});
+  }));
+  actions.append(button("撤销",()=>perform(()=>api("/api/grants/"+encodeURIComponent(g.id),"DELETE"),"授权已撤销，将在配置同步后生效。")));
+  return actions;
 }
 $("connect").onclick=()=>perform(async()=>{},"目录已刷新。");
 $("service-form").onsubmit=event=>{event.preventDefault();const data=Object.fromEntries(new FormData(event.target));data.enabled=event.target.elements.enabled.checked;data.transport="streamable-http";data.credentialRef=data.credentialRef||null;perform(()=>api("/api/services","POST",data),"服务已保存，等待发现服务同步。");};
